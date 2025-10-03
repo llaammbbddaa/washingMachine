@@ -1,0 +1,2 @@
+# Optional Python requirements. The script uses system TTS tools by default.
+pyttsx3>=2.90
