@@ -79,6 +79,8 @@ def main():
     parser.add_argument('--wav', required=True, help='Path to mono WAV file')
     parser.add_argument('--gpio', type=int, default=18, help='GPIO pin (BCM) to use for PWM (default 18)')
     parser.add_argument('--rate', type=int, default=None, help='Playback sample rate (optional)')
+    parser.add_argument('--gain', type=float, default=1.0, help='Playback gain (1.0 = no change, >1 amplify, clipped)')
+    parser.add_argument('--carrier', type=int, default=25000, help='PWM carrier frequency in Hz (default 25000)')
     args = parser.parse_args()
 
     if not os.path.exists(args.wav):
@@ -95,7 +97,28 @@ def main():
         sys.exit(3)
 
     try:
-        stream_pwm(samples, framerate, args.gpio, pi)
+        # Apply gain (scale samples, clip to 0..255)
+        if args.gain != 1.0:
+            scaled = []
+            for s in samples:
+                v = int(s * args.gain)
+                if v < 0:
+                    v = 0
+                elif v > 255:
+                    v = 255
+                scaled.append(v)
+            samples = scaled
+
+        # Stream using requested carrier
+        def stream_with_carrier(samples_local, sr, gpio_local, pi_local, carrier_hz):
+            pi_local.set_mode(gpio_local, pigpio.OUTPUT)
+            pi_local.hardware_PWM(gpio_local, carrier_hz, 0)
+            for s in samples_local:
+                duty = int(s * 1000000 / 255)
+                pi_local.hardware_PWM(gpio_local, carrier_hz, duty)
+            pi_local.hardware_PWM(gpio_local, 0, 0)
+
+        stream_with_carrier(samples, framerate, args.gpio, pi, args.carrier)
     finally:
         pi.stop()
 
